@@ -1,0 +1,78 @@
+Vagrant.configure("2") do |config|
+    
+    config.vm.box = "ubuntu/bionic64"
+    
+    
+    config.vm.provider "virtualbox" do |vb|
+      vb.memory = "512"
+      vb.cpus = 1
+    end
+  
+    # Máquina 1: Servidor web Apache
+    config.vm.define "pagina1" do |pagina1|
+      pagina1.vm.network "private_network", type: "dhcp"
+      pagina1.vm.network "private_network", ip: "192.168.33.10"
+      
+      pagina1.vm.provision "shell", inline: <<-SHELL
+        sudo apt-get update
+        sudo apt-get install -y apache2
+        sudo systemctl enable apache2
+        sudo systemctl start apache2
+      SHELL
+      
+      # Configurar directorio compartido
+      pagina1.vm.synced_folder "src/pagina1", "/var/www/html"
+    end
+  
+    # Máquina 2: Servidor web Apache
+    config.vm.define "pagina2" do |pagina2|
+      pagina2.vm.network "private_network", type: "dhcp"
+      pagina2.vm.network "private_network", ip: "192.168.33.11"
+      
+      pagina2.vm.provision "shell", inline: <<-SHELL
+        sudo apt-get update
+        sudo apt-get install -y apache2
+        sudo systemctl enable apache2
+        sudo systemctl start apache2
+      SHELL
+      
+      # Configurar directorio compartido
+      pagina2.vm.synced_folder "src/pagina2", "/var/www/html"
+    end
+  
+    # Máquina 3: Servidor con Nginx y balanceo de carga
+    config.vm.define "nginx" do |nginx|
+      nginx.vm.network "private_network", type: "dhcp"
+      nginx.vm.network "private_network", ip: "192.168.33.12"
+      
+      nginx.vm.provision "shell", inline: <<-SHELL
+        sudo apt-get update
+        sudo apt-get install -y nginx
+        sudo systemctl enable nginx
+        sudo systemctl start nginx
+        
+        # Configuración de Nginx como balanceador de carga
+        sudo bash -c 'cat > /etc/nginx/sites-available/default <<EOF
+        upstream backend {
+          server 192.168.33.10;
+          server 192.168.33.11;
+        }
+  
+        server {
+          listen 80;
+          
+          location / {
+            proxy_pass http://backend;
+            proxy_set_header Host \$host;
+            proxy_set_header X-Real-IP \$remote_addr;
+            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+          }
+        }
+        EOF'
+  
+        # Reiniciar Nginx para aplicar la nueva configuración
+        sudo systemctl restart nginx
+      SHELL
+    end
+  end
+  
